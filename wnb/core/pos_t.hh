@@ -9,24 +9,24 @@ namespace wnb
 
   enum pos_t
   	{
-   		UNKNOWN = 0,
-    	N       = 1,
-    	V       = 2,
-    	A       = 3,
-    	R       = 4,
-    	S     	= 5,
+      UNKNOWN = 0,
+      N       = 1,
+      V       = 2,
+      A       = 3,
+      R       = 4,
+      S       = 5,
   	};
 
 
   inline pos_t get_pos_from_name(const std::string& pos)
   {
-    if (pos == "adj")
+    if (pos == "adj" || pos == "ADJ")
       return A;
-    if (pos == "noun")
+    if (pos == "noun" || pos == "NOUN")
       return N;
-    if (pos == "adv")
+    if (pos == "adv" || pos == "ADV")
       return R;
-    if (pos == "verb")
+    if (pos == "verb" || pos == "VERB")
       return V;
     return UNKNOWN;
   }

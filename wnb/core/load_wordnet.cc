@@ -5,7 +5,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <algorithm>
-#include <utility>
 
 #include <boost/graph/adjacency_list.hpp>
 #include <boost/progress.hpp>
@@ -26,21 +25,26 @@ namespace wnb
   {
 
     // Load synset's words
-    void load_data_row_words(std::stringstream& srow, synset& synset)
+    void load_data_row_words(std::stringstream& srow, synset*& syn)
     {
-      srow >> std::hex >> synset.w_cnt >> std::dec;
-      for (std::size_t i = 0; i < synset.w_cnt; i++)
+      // w_cnt  word  lex_id  [word  lex_id...]
+      // w_cnt  [word  lex_id]*N
+      srow >> std::hex >> syn->w_cnt >> std::dec;
+      for (int i = 0; i < syn->w_cnt; i++)
       {
         //word lex_id
 
         std::string word;
         srow >> word;
-        synset.words.push_back(word);
+        std::transform(word.begin(), word.end(), word.begin(), ::tolower);
+        syn->words->push_back(ext::split(word,'(').at(0));
 
-        int lex_id;
+        int lex_id = 0;
         srow >> std::hex >> lex_id >> std::dec;
-        synset.lex_ids.push_back(lex_id);
+        syn->lex_ids->push_back(lex_id);
       }
+      assert(syn->words->size() == syn->lex_ids->size());
+      assert(syn->words->size() == syn->w_cnt);
     }
 
     // Add rel to graph
@@ -49,14 +53,14 @@ namespace wnb
                          pos_t pos,                   // p.o.s. of dest
                          int src,                     // word src
                          int trgt,                    // word target
-                         synset& synset,              // source synset
+                         synset*& syn,              // source synset
                          wordnet& wn,                 // our wordnet
                          info_helper& info)           // helper
     {
       //if (pos == S || synset.pos == S)
       //  return; //FIXME: check where are s synsets.
 
-      int u = synset.id;
+      int u = syn->id;
       int v = info.compute_indice(synset_offset, pos);
 
       ptr p;
@@ -69,16 +73,16 @@ namespace wnb
 
 
     // load ptrs
-    void load_data_row_ptrs(std::stringstream& srow, synset& synset,
+    void load_data_row_ptrs(std::stringstream& srow, synset*& syn,
                             wordnet& wn, info_helper& info)
     {
-      srow >> synset.p_cnt;
-      for (std::size_t i = 0; i < synset.p_cnt; i++)
+      srow >> syn->p_cnt;
+      for (int i = 0; i < syn->p_cnt; i++)
       {
         //http://wordnet.princeton.edu/wordnet/man/wndb.5WN.html#sect3
         //pointer_symbol  synset_offset  pos  source/target
         std::string pointer_symbol_;
-        int   synset_offset;
+        int  synset_offset;
         pos_t pos;
         int   src;
         int   trgt;
@@ -92,7 +96,7 @@ namespace wnb
 
         //print extracted edges
         //std::cout << "(" << pointer_symbol << ", " << synset_offset;
-        //std::cout << ", " << pos << ")" << std::endl;
+        //std::cout << ", " << pos << ")" << std::end;
 
         // Extract source/target words info
         std::string src_trgt;
@@ -102,7 +106,7 @@ namespace wnb
         ssrc >> std::hex >> src >> std::dec;
         strgt >> std::hex >> trgt >> std::dec;
 
-        add_wordnet_rel(pointer_symbol_, synset_offset, pos, src, trgt, synset, wn, info);
+        add_wordnet_rel(pointer_symbol_, synset_offset, pos, src, trgt, syn, wn, info);
       }
     }
 
@@ -111,25 +115,26 @@ namespace wnb
     void load_data_row(const std::string& row, wordnet& wn, info_helper& info)
     {
       //http://wordnet.princeton.edu/wordnet/man/wndb.5WN.html#sect3
-      // synset_offset lex_filenum ss_type w_cnt word lex_id [word lex_id...] p_cnt [ptr...] [frames...] | gloss
-      synset synset;
+      // synset_offset  lex_filenum  ss_type  w_cnt [word  lex_id] [word  lex_id...]  p_cnt  [ptr_symbol synset_ofs pos target]                         [frames...] |   gloss
+      // 00001740       03           n        01     entity  0                         003     ~          00001930   n   0000    ~ 00002137 n 0000 ~ 04424418 n 0000 | that which is perceived or known or inferred to have its own distinct existence (living or nonliving)
+      synset* syn = new synset();
 
       std::stringstream srow(row);
-      int synset_offset;
-      srow >> synset_offset;
-      srow >> synset.lex_filenum;
-      char ss_type;
-      srow >> ss_type;
+      srow >> syn->synset_offset_;
+      srow >> syn->lex_filenum;
+      srow >> syn->ss_type_;
 
+    //   std::cout << syn->synset_offset_ << ":" << syn->lex_filenum << ":" << syn->ss_type_ << std::endl;
       // extra information
-      synset.pos = info.get_pos(ss_type);
-      synset.id  = info.compute_indice(synset_offset, synset.pos);
+      syn->pos = info.get_pos(syn->ss_type_);
+
+      syn->id  = info.compute_indice(syn->synset_offset_, syn->pos);
 
       // words
-      load_data_row_words(srow, synset);
+      load_data_row_words(srow, syn);
 
-      // ptrs
-      load_data_row_ptrs(srow, synset, wn, info);
+      // ptrs (relations between synsets)
+      load_data_row_ptrs(srow, syn, wn, info);
 
       //frames (skipped)
       std::string tmp;
@@ -138,13 +143,10 @@ namespace wnb
           break;
 
       // gloss
-      std::getline(srow, synset.gloss);
-
-      // extra
-      synset.sense_number = 0;
+      std::getline(srow, syn->gloss);
 
       // Add synset to graph
-      wn.wordnet_graph[synset.id] = synset;
+      wn.wordnet_graph[syn->id] = syn;
     }
 
 
@@ -173,35 +175,35 @@ namespace wnb
     //FIXME: It seems possible to replace synset_offsets with indice here.
     void load_index_row(const std::string& row, wordnet& wn, info_helper& info)
     {
-      // lemma pos synset_cnt p_cnt [ptr_symbol...] sense_cnt tagsense_cnt synset_offset [synset_offset...]
-      index index;
+      // lemma  pos  synset_cnt  p_cnt  [ptr_symbol...]  sense_cnt  tagsense_cnt   synset_offset  [synset_offset...]
+      // bank   n    10          5      @ ~ #m %p +      10         4              09213565       08420278 09213434 08462066 13368318 13356402 09213828 04139859 02787772 00169305
+      index* idx = new index();
       std::stringstream srow(row);
 
-      char pos;
-      srow >> index.lemma;
-      srow >> pos;
-      index.pos = info.get_pos(pos); // extra data
-      srow >> index.synset_cnt;
-      srow >> index.p_cnt;
+      srow >> idx->lemma;
+      srow >> idx->pos_;
+      srow >> idx->synset_cnt;
+      srow >> idx->p_cnt;
 
       std::string tmp_p;
-      for (std::size_t i = 0; i < index.p_cnt; i++)
+      for (int i = 0; i < idx->p_cnt; i++)
       {
         srow >> tmp_p;
-        index.ptr_symbols.push_back(tmp_p);
+        idx->ptr_symbols.push_back(tmp_p);
       }
-      srow >> index.sense_cnt;
-      srow >> index.tagsense_cnt;
+      srow >> idx->sense_cnt;
+      srow >> idx->tagsense_cnt;
 
       int tmp_o;
       while (srow >> tmp_o)
-      {
-        index.synset_offsets.push_back(tmp_o);
-        index.synset_ids.push_back(info.compute_indice(tmp_o, index.pos)); // extra data
-      }
+        idx->synset_offsets.push_back(tmp_o);
+
+      //extra data
+      idx->pos = info.get_pos(idx->pos_);
 
       //add synset to index list
-      wn.index_list.push_back(index);
+      wn.index_list.push_back(idx);
+      wn.index_map[std::pair<std::string, pos_t>(idx->lemma, idx->pos)] = idx;
     }
 
 
@@ -215,8 +217,7 @@ namespace wnb
       char row[MAX_LENGTH];
 
       //skip header
-      const unsigned int header_nb_lines = 29;
-      for(std::size_t i = 0; i < header_nb_lines; i++)
+      for(unsigned i = 0; i < 29; i++)
         fin.getline(row, MAX_LENGTH);
 
       //parse data line
@@ -248,6 +249,7 @@ namespace wnb
 
         exc[key] = value;
       }
+      fin.close();
     }
 
     void load_wordnet_cat(const std::string dn, std::string cat,
@@ -258,7 +260,7 @@ namespace wnb
       load_wordnet_exc(dn, cat, wn, info);
     }
 
-    // FIXME: this file is not in all packaged version of wordnet
+    // FIXME: this file is not found in any packaged version of wordnet
     void load_wordnet_index_sense(const std::string& dn, wordnet& wn, info_helper& info)
     {
       std::string fn = dn + "index.sense";
@@ -275,68 +277,46 @@ namespace wnb
         srow >> sense_key;
 
         // Get the pos of the lemma
-        std::vector<std::string> sk = ext::split(sense_key,'%');
-        std::string word = sk.at(0);
-        std::stringstream tmp(ext::split(sk.at(1), ':').at(0));
+        std::stringstream tmp(ext::split(ext::split(sense_key,'%').at(1), ':').at(0));
+        std::string lemma(ext::split(sense_key,'%').at(0));
         int ss_type;
         tmp >> ss_type;
-        pos_t pos =  (pos_t) ss_type;
+        pos_t pos = (pos_t) ss_type;
+
 
         srow >> synset_offset;
 
         // Update synset info
         int u = info.compute_indice(synset_offset, pos);
-        int sense_number;
-        srow >> sense_number;
-        wn.wordnet_graph[u].sense_number += sense_number;
-        int tag_cnt;
-        srow >> tag_cnt;
-        if (tag_cnt != 0)
-          wn.wordnet_graph[u].tag_cnts.push_back( make_pair(word,tag_cnt) );
+        wn.sensekey_indice[sense_key] = u;
+        // wn.indice_offset[u] = synset_offset;
+        // std::vector<std::string>& words = wn.wordnet_graph[u].words;
+        // assert(std::find(words.begin(), words.end(), lemma) != words.end());
+        if(wn.wordnet_graph[u]->synset_offset_ != synset_offset)
+        {
+            if(std::find(wn.wordnet_graph[u]->words->begin(), wn.wordnet_graph[u]->words->end(), lemma) == wn.wordnet_graph[u]->words->end())
+            {
+                printf("error: not matched the word");
+                std::cout << lemma << std::endl;
+            }
+          printf("\n sense_key : %s \n \tconfilict %d : %d\n", sense_key.c_str(), wn.wordnet_graph[u]->synset_offset_ , synset_offset);
+        }
+        //assert(wn.wordnet_graph[u]->pos == pos);
+        if(wn.wordnet_graph[u]->id == 0){
+          assert(wn.wordnet_graph[u]->id == u);
+          assert(wn.wordnet_graph[u]->synset_offset_ == 1740);
+        }
+        wn.wordnet_graph[u]->_sensekeys->push_back(sense_key);
+        if(wn.indice_sensekeys.find(u) == wn.indice_sensekeys.end())
+        {
+            wn.indice_sensekeys[u] = std::vector<std::string>();
+        }
+        wn.indice_sensekeys[u].push_back(sense_key);
 
-        //if (synset_offset == 2121620)
-        //  std::cout << u << " " << word << " " << synset_offset << " "
-        //            <<  wn.wordnet_graph[u].tag_cnt << " "
-        //            <<  wn.wordnet_graph[u].words[0] << std::endl;
+        srow >> wn.wordnet_graph[u]->sense_number;
+        srow >> wn.wordnet_graph[u]->tag_cnt;
       }
-    }
-
-    // wn -over used info in cntlist even if this is deprecated
-    // It is ok not to FIX and use this function
-    void load_wordnet_cntlist(const std::string& dn, wordnet& wn, info_helper& info)
-    {
-      std::string fn = dn + "cntlist";
-      std::ifstream fin(fn.c_str());
-      if (!fin.is_open())
-        throw std::runtime_error("File Not Found: " + fn);
-
-      std::string sense_key;
-      int sense_number;
-      int tag_cnt;
-
-      std::string row;
-      while (std::getline(fin, row))
-      {
-        std::stringstream srow(row);
-
-        srow >> sense_key;
-        srow >> sense_number;
-        srow >> tag_cnt;
-
-        // Get the pos of the lemma
-        std::string word = ext::split(sense_key,'%').at(0);
-        std::stringstream tmp(ext::split(ext::split(sense_key,'%').at(1), ':').at(0));
-        int ss_type;
-        tmp >> ss_type;
-        pos_t pos = (pos_t) ss_type;
-
-        // Update synset info
-        int synset_offset; // FIXME
-        int u = info.compute_indice(synset_offset, pos);
-        wn.wordnet_graph[u].sense_number += sense_number;
-        if (tag_cnt != 0)
-          wn.wordnet_graph[u].tag_cnts.push_back( make_pair(word,tag_cnt) );
-      }
+      fin.close();
     }
 
   } // end of anonymous namespace

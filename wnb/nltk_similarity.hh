@@ -7,6 +7,7 @@
 
 namespace wnb
 {
+
   namespace internal
   {
 
@@ -19,6 +20,7 @@ namespace wnb
       hyper_edge(PointerSymbolMap pointer_symbol)
         : m_pointer_symbol(pointer_symbol) { }
 
+      // filtering function
       template <typename Edge>
       bool operator()(const Edge& e) const
       {
@@ -43,12 +45,14 @@ namespace wnb
 
     internal::hyper_edge<PointerSymbolMap> filter;
     G fg;
+    std::map<int, wordnet::ID> indice_ID;
 
   public:
 
     nltk_similarity(wordnet& wn)
       : filter(get(&ptr::pointer_symbol, wn.wordnet_graph)),
-                   fg(wn.wordnet_graph, filter)
+                   fg(wn.wordnet_graph, filter),
+                   indice_ID(wn.indice_ID)
     { }
 
     /// Get list of hypernyms of s along with distance to s
@@ -81,7 +85,7 @@ namespace wnb
       vertex u = q.front(); q.pop();
 
       int new_d = map[u] + 1;
-      for (boost::tuples::tie(e, e_end) = out_edges(u, fg); e != e_end; ++e)
+      for (tie(e, e_end) = out_edges(u, fg); e != e_end; ++e)
       {
         vertex v = target(*e,fg);
         q.push(v);
@@ -105,8 +109,8 @@ namespace wnb
   int
   nltk_similarity::shortest_path_distance(const synset& synset1, const synset& synset2)
   {
-    vertex v1 = synset1.id;
-    vertex v2 = synset2.id;
+    vertex v1 = indice_ID[synset1.indice];
+    vertex v2 = indice_ID[synset2.indice];
 
     std::map<vertex, int> map1 = hypernym_map(v1);
     std::map<vertex, int> map2 = hypernym_map(v2);

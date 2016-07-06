@@ -25,7 +25,7 @@ namespace wnb
     static const int  offsets[NUMPARTS];
     static const int  cnts[NUMPARTS];
 
-    typedef std::map<int,int>       i2of_t;     ///< indice/offset correspondences
+    typedef std::map<int, int>       i2of_t;     ///< indice/offset correspondences
     typedef std::map<pos_t, i2of_t> pos_i2of_t; ///< pos / map  correspondences
 
     /// Constructor
@@ -72,6 +72,7 @@ namespace wnb
       for (i = 0;  i < POS_ARRAY_SIZE; i++)
         if (c == POS_ARRAY[i])
           return pos_t(i);
+      printf("pos error: %c\n", c);
       throw std::runtime_error(std::string("pos ") + c + " NOT FOUND.");
     }
 
@@ -92,4 +93,3 @@ namespace wnb
 } // end of namespace wncpp
 
 #endif /* _INFO_HELPER_HH */
-

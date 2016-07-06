@@ -73,6 +73,7 @@ namespace wnb
   info_helper::update_pos_maps()
   {
     // http://wordnet.princeton.edu/wordnet/man/wndb.5WN.html#sect3
+    //map.insert(std::pair<'s',????>); //FIXME: What shall we do here ?
 
     indice_offset[0] = 0; // dummy
 
@@ -80,7 +81,7 @@ namespace wnb
     indice_offset[2] = indice_offset[1] + pos_maps[N].size(); // V
     indice_offset[3] = indice_offset[2] + pos_maps[V].size(); // A
     indice_offset[4] = indice_offset[3] + pos_maps[A].size(); // R
-    indice_offset[5] = indice_offset[4] + pos_maps[S].size(); // S
+    // indice_offset[5] = indice_offset[4] + pos_maps[R].size(); // S   there is no need
 
   }
 
@@ -88,7 +89,7 @@ namespace wnb
   {
     if (pos == S)
       pos = A;
-    std::map<int,int>& map = pos_maps[pos];
+    std::map<int, int>& map = pos_maps[pos];
 
     assert(pos <= 5 && pos > 0);
 
@@ -99,10 +100,10 @@ namespace wnb
 
   // Return relation between synset indices and offsets
   static
-  std::map<int,int>
+  std::map<int, int>
   preprocess_data(const std::string& fn)
   {
-    std::map<int,int> map;
+    std::map<int, int> map;
     std::ifstream file(fn.c_str());
     if (!file.is_open())
       throw std::runtime_error("preprocess_data: File not found: " + fn);
@@ -110,18 +111,17 @@ namespace wnb
     std::string row;
 
     //skip header
-    const unsigned int header_nb_lines = 29;
-    for(std::size_t i = 0; i < header_nb_lines; i++)
+    for(unsigned i = 0; i < 29; i++)
       std::getline(file, row);
 
-    int ind = 0;
+    std::size_t ind = 0;
     //parse data line
     while (std::getline(file, row))
     {
       std::stringstream srow(row);
       int offset;
       srow >> offset;
-      map.insert(std::pair<int,int>(offset, ind));
+      map.insert(std::pair<int, int>(offset, ind));
       ind++;
     }
 
